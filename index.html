@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>醫師章線上產生器 (原生精準繪圖版)</title>
+    
+    <!-- React & ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        /* 標楷體字型設定，符合台灣常見印章風格 */
+        .font-kai {
+            font-family: "BiauKai", "DFKai-SB", "Kaiti TC", "TW-Kai", "楷體", serif;
+        }
+        
+        /* 透明背景棋盤格提示 */
+        .bg-checkered {
+            background-color: #f0f0f0;
+            background-image: 
+                linear-gradient(45deg, #ccc 25%, transparent 25%), 
+                linear-gradient(-45deg, #ccc 25%, transparent 25%), 
+                linear-gradient(45deg, transparent 75%, #ccc 75%), 
+                linear-gradient(-45deg, transparent 75%, #ccc 75%);
+            background-size: 20px 20px;
+            background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans min-h-screen">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        function App() {
+            const [clinicName, setClinicName] = useState("康博診所");
+            const [doctorName, setDoctorName] = useState("饒曼齡");
+            const [licenseNum, setLicenseNum] = useState("002705");
+            const [specialistNum, setSpecialistNum] = useState("");
+            const [isExporting, setIsExporting] = useState(false);
+
+            // 原生 Canvas 繪圖匯出引擎 (100% 解決截圖跑位問題)
+            const handleDownload = () => {
+                setIsExporting(true);
+                try {
+                    const canvas = document.createElement('canvas');
+                    const scale = 4; // 4倍高畫質匯出
+                    const w = 580 * scale;
+                    const h = 380 * scale;
+                    canvas.width = w;
+                    canvas.height = h;
+                    const ctx = canvas.getContext('2d');
+
+                    // 1. 設定透明背景與畫筆樣式
+                    ctx.clearRect(0, 0, w, h);
+                    const color = '#b30000';
+                    ctx.strokeStyle = color;
+                    ctx.fillStyle = color;
+                    const fontFamily = '"BiauKai", "DFKai-SB", "Kaiti TC", "TW-Kai", "楷體", serif';
+                    ctx.textBaseline = 'middle';
+                    ctx.textAlign = 'center';
+
+                    // 2. 畫外框 (8px)
+                    ctx.lineWidth = 8 * scale;
+                    ctx.strokeRect(4 * scale, 4 * scale, w - 8 * scale, h - 8 * scale);
+
+                    // 3. 畫分隔線 (5px)
+                    ctx.lineWidth = 5 * scale;
+                    // 第一條線
+                    ctx.beginPath();
+                    ctx.moveTo(0, 110 * scale);
+                    ctx.lineTo(w, 110 * scale);
+                    ctx.stroke();
+                    // 第二條線
+                    ctx.beginPath();
+                    ctx.moveTo(0, 228 * scale);
+                    ctx.lineTo(w, 228 * scale);
+                    ctx.stroke();
+
+                    // 輔助函式：自動分配文字間距並畫出
+                    const drawSpacedText = (textArray, startX, endX, y, fontSize) => {
+                        ctx.font = `bold ${fontSize * scale}px ${fontFamily}`;
+                        // 微調標楷體的視覺垂直置中中心點
+                        const adjustedY = y + (3 * scale); 
+                        
+                        if (textArray.length === 1) {
+                            ctx.fillText(textArray[0], (startX + endX) / 2, adjustedY);
+                            return;
+                        }
+                        const step = (endX - startX) / (textArray.length - 1);
+                        for (let i = 0; i < textArray.length; i++) {
+                            ctx.fillText(textArray[i], startX + i * step, adjustedY);
+                        }
+                    };
+
+                    // --- 第一層：診所名稱 ---
+                    const clinicChars = (clinicName || ' ').split('');
+                    let cMargin = w * 0.08;
+                    if(clinicChars.length <= 4) cMargin = w * 0.2;
+                    if(clinicChars.length <= 2) cMargin = w * 0.3;
+                    // Y座標置中點：110 / 2 = 55
+                    drawSpacedText(clinicChars, cMargin, w - cMargin, 55 * scale, 80); 
+
+                    // --- 第二層：醫師姓名 ---
+                    const leftW = w * 0.32;
+                    // "醫 師" Y座標置中點：110 + (118/2) = 169
+                    drawSpacedText(['醫', '師'], leftW * 0.2, leftW * 0.8, 169 * scale, 52);
+                    
+                    // 醫師名字
+                    const nameChars = (doctorName || ' ').split('');
+                    let nMarginRatio = 0.08;
+                    if (nameChars.length <= 3) nMarginRatio = 0.18;
+                    if (nameChars.length <= 2) nMarginRatio = 0.28;
+                    const nameStartX = leftW + (w - leftW) * nMarginRatio;
+                    const nameEndX = w - (w - leftW) * nMarginRatio;
+                    drawSpacedText(nameChars, nameStartX, nameEndX, 169 * scale, 84);
+
+                    // --- 第三層：醫字號 & 整專字號 ---
+                    if (specialistNum) {
+                        // 雙行模式 Y座標置中點： 228 + 31.5 = 259.5, 291 + 31.5 = 322.5
+                        const licMargin = w * 0.08;
+                        const topChars = ['醫', '字', ...(licenseNum || '').split(''), '號'];
+                        drawSpacedText(topChars, licMargin, w - licMargin, 259.5 * scale, 44);
+
+                        const bottomChars = ['整', '專', '醫', '字', ...(specialistNum || '').split(''), '號'];
+                        drawSpacedText(bottomChars, licMargin, w - licMargin, 322.5 * scale, 44);
+                    } else {
+                        // 單行模式 Y座標置中點： 228 + 63 = 291
+                        const licMargin = w * 0.08;
+                        const chars = ['醫', '字', ...(licenseNum || '').split(''), '號'];
+                        drawSpacedText(chars, licMargin, w - licMargin, 291 * scale, 72);
+                    }
+
+                    // 產生並下載圖片
+                    const dataUrl = canvas.toDataURL('image/png');
+                    const link = document.createElement('a');
+                    link.download = `${doctorName}醫師章_透明去背.png`;
+                    link.href = dataUrl;
+                    link.click();
+                } catch (error) {
+                    console.error("匯出失敗:", error);
+                    alert("圖片產生失敗，請稍後再試。");
+                } finally {
+                    setIsExporting(false);
+                }
+            };
+
+            // 預覽區寬度計算器 (對應 Canvas 比例)
+            const getClinicWidth = () => {
+                const len = clinicName.length;
+                if (len <= 2) return '40%';
+                if (len <= 4) return '60%';
+                return '84%';
+            };
+
+            const getNameWidth = () => {
+                const len = doctorName.length;
+                if (len <= 2) return '44%';
+                if (len <= 3) return '64%';
+                return '84%';
+            };
+
+            return (
+                <div class="max-w-6xl mx-auto p-6 md:p-12">
+                    <div class="mb-8">
+                        <h1 class="text-3xl font-bold text-gray-900 flex items-center gap-3">
+                            <i data-lucide="stamp" class="w-8 h-8 text-red-700"></i>
+                            印章公版產生器
+                        </h1>
+                        <p class="text-gray-500 mt-2">隨時編輯內容，一鍵下載透明去背 PNG 檔 (原生高畫質繪圖版)。</p>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                        {/* 左側：控制面板 */}
+                        <div class="lg:col-span-4 space-y-6 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">1. 診所/醫院名稱</label>
+                                <input 
+                                    type="text" 
+                                    value={clinicName}
+                                    onChange={(e) => setClinicName(e.target.value)}
+                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-colors"
+                                    placeholder="例如：康博診所"
+                                />
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">2. 醫師姓名</label>
+                                <input 
+                                    type="text" 
+                                    value={doctorName}
+                                    onChange={(e) => setDoctorName(e.target.value)}
+                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-colors"
+                                    placeholder="例如：饒曼齡"
+                                />
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">3. 醫師證號 (醫字第O號)</label>
+                                <input 
+                                    type="text" 
+                                    value={licenseNum}
+                                    onChange={(e) => setLicenseNum(e.target.value)}
+                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-colors"
+                                    placeholder="例如：002705"
+                                />
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">4. 整專醫字號 (選填，若無請留空)</label>
+                                <input 
+                                    type="text" 
+                                    value={specialistNum}
+                                    onChange={(e) => setSpecialistNum(e.target.value)}
+                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-colors"
+                                    placeholder="若無則留空"
+                                />
+                            </div>
+
+                            <div class="pt-4 border-t border-gray-100">
+                                <button 
+                                    onClick={handleDownload}
+                                    disabled={isExporting}
+                                    class={`w-full flex items-center justify-center gap-2 py-3 px-4 bg-red-700 hover:bg-red-800 text-white rounded-xl font-medium transition-all shadow-md hover:shadow-lg ${isExporting ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                >
+                                    <i data-lucide="download" class="w-5 h-5"></i>
+                                    {isExporting ? '完美繪圖中...' : '下載透明去背 PNG 檔'}
+                                </button>
+                                <p class="text-xs text-gray-400 mt-3 text-center">使用原生繪圖技術，保證排版 100% 精準</p>
+                            </div>
+                        </div>
+
+                        {/* 右側：預覽區 */}
+                        <div class="lg:col-span-8">
+                            <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center justify-center min-h-[500px]">
+                                <h2 class="text-sm font-medium text-gray-400 mb-6 uppercase tracking-wider">網頁預覽 (匯出結果將完全居中)</h2>
+                                
+                                {/* 棋盤格背景容器，用來顯示透明度 */}
+                                <div class="bg-checkered p-12 rounded-lg border border-gray-200 overflow-hidden shadow-inner w-full flex justify-center">
+                                    
+                                    {/* --- 網頁預覽本體 --- */}
+                                    <div 
+                                        id="stamp-container" 
+                                        class="font-kai flex flex-col bg-transparent"
+                                        style={{
+                                            width: '580px',
+                                            height: '380px',
+                                            border: '8px solid #b30000',
+                                            color: '#b30000',
+                                            boxSizing: 'border-box'
+                                        }}
+                                    >
+                                        {/* 第一層：診所名稱 */}
+                                        <div class="w-full h-[110px] border-b-[5px] border-[#b30000] flex items-center justify-center" style={{ boxSizing: 'border-box' }}>
+                                            <div class="flex justify-between items-center h-full" style={{ width: getClinicWidth() }}>
+                                                {(clinicName || ' ').split('').map((char, i) => (
+                                                    <span key={`cli-${i}`} class="text-[80px] font-bold" style={{ lineHeight: 'normal' }}>{char}</span>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {/* 第二層：醫師姓名 */}
+                                        <div class="w-full h-[118px] border-b-[5px] border-[#b30000] flex" style={{ boxSizing: 'border-box' }}>
+                                            <div class="w-[32%] flex items-center justify-around px-5">
+                                                <span class="text-[52px] font-bold" style={{ lineHeight: 'normal' }}>醫</span>
+                                                <span class="text-[52px] font-bold" style={{ lineHeight: 'normal' }}>師</span>
+                                            </div>
+                                            <div class="w-[68%] flex items-center justify-center h-full">
+                                                <div class="flex justify-between w-full" style={{ width: getNameWidth() }}>
+                                                    {(doctorName || ' ').split('').map((char, i) => (
+                                                        <span key={`doc-${i}`} class="text-[84px] font-bold" style={{ lineHeight: 'normal' }}>{char}</span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* 第三層：醫字號 & 整專字號 */}
+                                        <div class="w-full h-[126px] flex flex-col justify-center px-10" style={{ boxSizing: 'border-box' }}>
+                                            {specialistNum ? (
+                                                <>
+                                                    <div class="flex items-center justify-between w-full h-[63px]">
+                                                        {['醫', '字', ...(licenseNum || '').split(''), '號'].map((char, i) => (
+                                                            <span key={`lic-${i}`} class="text-[44px] font-bold" style={{ lineHeight: 'normal' }}>{char}</span>
+                                                        ))}
+                                                    </div>
+                                                    <div class="flex items-center justify-between w-full h-[63px]">
+                                                        {['整', '專', '醫', '字', ...(specialistNum || '').split(''), '號'].map((char, i) => (
+                                                            <span key={`spec-${i}`} class="text-[44px] font-bold" style={{ lineHeight: 'normal' }}>{char}</span>
+                                                        ))}
+                                                    </div>
+                                                </>
+                                            ) : (
+                                                <div class="flex items-center justify-between w-full h-[126px]">
+                                                    {['醫', '字', ...(licenseNum || '').split(''), '號'].map((char, i) => (
+                                                        <span key={`lic-${i}`} class="text-[72px] font-bold" style={{ lineHeight: 'normal' }}>{char}</span>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                    {/* --- 網頁預覽本體結束 --- */}
+
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+
+        // Initialize Lucide Icons after render
+        setTimeout(() => {
+            lucide.createIcons();
+        }, 100);
+    </script>
+</body>
+</html>

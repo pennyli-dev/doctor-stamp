@@ -5,17 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>醫師章線上產生器 (原生精準繪圖版)</title>
     
-    <!-- React & ReactDOM -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
     
-    <!-- Babel for JSX -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
-    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
 
-    <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
 
     <style>
@@ -47,10 +43,12 @@
             const [clinicName, setClinicName] = useState("康博診所");
             const [doctorName, setDoctorName] = useState("饒曼齡");
             const [licenseNum, setLicenseNum] = useState("002705");
+            // 新增：專科字號的類型狀態 (預設整專醫字)
+            const [specialistType, setSpecialistType] = useState("整專醫字");
             const [specialistNum, setSpecialistNum] = useState("");
             const [isExporting, setIsExporting] = useState(false);
 
-            // 原生 Canvas 繪圖匯出引擎 (100% 解決截圖跑位問題)
+            // 原生 Canvas 繪圖匯出引擎
             const handleDownload = () => {
                 setIsExporting(true);
                 try {
@@ -109,15 +107,12 @@
                     let cMargin = w * 0.08;
                     if(clinicChars.length <= 4) cMargin = w * 0.2;
                     if(clinicChars.length <= 2) cMargin = w * 0.3;
-                    // Y座標置中點：110 / 2 = 55
                     drawSpacedText(clinicChars, cMargin, w - cMargin, 55 * scale, 80); 
 
                     // --- 第二層：醫師姓名 ---
                     const leftW = w * 0.32;
-                    // "醫 師" Y座標置中點：110 + (118/2) = 169
                     drawSpacedText(['醫', '師'], leftW * 0.2, leftW * 0.8, 169 * scale, 52);
                     
-                    // 醫師名字
                     const nameChars = (doctorName || ' ').split('');
                     let nMarginRatio = 0.08;
                     if (nameChars.length <= 3) nMarginRatio = 0.18;
@@ -126,17 +121,16 @@
                     const nameEndX = w - (w - leftW) * nMarginRatio;
                     drawSpacedText(nameChars, nameStartX, nameEndX, 169 * scale, 84);
 
-                    // --- 第三層：醫字號 & 整專字號 ---
+                    // --- 第三層：醫字號 & 動態專科字號 ---
                     if (specialistNum) {
-                        // 雙行模式 Y座標置中點： 228 + 31.5 = 259.5, 291 + 31.5 = 322.5
                         const licMargin = w * 0.08;
                         const topChars = ['醫', '字', ...(licenseNum || '').split(''), '號'];
                         drawSpacedText(topChars, licMargin, w - licMargin, 259.5 * scale, 44);
 
-                        const bottomChars = ['整', '專', '醫', '字', ...(specialistNum || '').split(''), '號'];
+                        // 這裡改用使用者選擇的專科前綴
+                        const bottomChars = [...specialistType.split(''), ...(specialistNum || '').split(''), '號'];
                         drawSpacedText(bottomChars, licMargin, w - licMargin, 322.5 * scale, 44);
                     } else {
-                        // 單行模式 Y座標置中點： 228 + 63 = 291
                         const licMargin = w * 0.08;
                         const chars = ['醫', '字', ...(licenseNum || '').split(''), '號'];
                         drawSpacedText(chars, licMargin, w - licMargin, 291 * scale, 72);
@@ -156,7 +150,6 @@
                 }
             };
 
-            // 預覽區寬度計算器 (對應 Canvas 比例)
             const getClinicWidth = () => {
                 const len = clinicName.length;
                 if (len <= 2) return '40%';
@@ -218,14 +211,25 @@
                             </div>
 
                             <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-2">4. 整專醫字號 (選填，若無請留空)</label>
-                                <input 
-                                    type="text" 
-                                    value={specialistNum}
-                                    onChange={(e) => setSpecialistNum(e.target.value)}
-                                    class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-colors"
-                                    placeholder="若無則留空"
-                                />
+                                <label class="block text-sm font-medium text-gray-700 mb-2">4. 專科字號 (選填，若無請留空)</label>
+                                <div class="flex gap-2">
+                                    {/* 新增的下拉選單 */}
+                                    <select 
+                                        value={specialistType}
+                                        onChange={(e) => setSpecialistType(e.target.value)}
+                                        class="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 bg-white transition-colors"
+                                    >
+                                        <option value="整專醫字">整專醫字</option>
+                                        <option value="外專醫字">外專醫字</option>
+                                    </select>
+                                    <input 
+                                        type="text" 
+                                        value={specialistNum}
+                                        onChange={(e) => setSpecialistNum(e.target.value)}
+                                        class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-colors"
+                                        placeholder="例如：000879"
+                                    />
+                                </div>
                             </div>
 
                             <div class="pt-4 border-t border-gray-100">
@@ -285,7 +289,7 @@
                                             </div>
                                         </div>
 
-                                        {/* 第三層：醫字號 & 整專字號 */}
+                                        {/* 第三層：醫字號 & 整專/外專字號 */}
                                         <div class="w-full h-[126px] flex flex-col justify-center px-10" style={{ boxSizing: 'border-box' }}>
                                             {specialistNum ? (
                                                 <>
@@ -295,7 +299,8 @@
                                                         ))}
                                                     </div>
                                                     <div class="flex items-center justify-between w-full h-[63px]">
-                                                        {['整', '專', '醫', '字', ...(specialistNum || '').split(''), '號'].map((char, i) => (
+                                                        {/* 動態渲染使用者選擇的專科名稱 */}
+                                                        {[...specialistType.split(''), ...(specialistNum || '').split(''), '號'].map((char, i) => (
                                                             <span key={`spec-${i}`} class="text-[44px] font-bold" style={{ lineHeight: 'normal' }}>{char}</span>
                                                         ))}
                                                     </div>
